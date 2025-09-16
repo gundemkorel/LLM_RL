@@ -1,0 +1,12 @@
+numpy
+scikit-learn
+scipy
+pandas
+pytest
+# Optional (commented): install when you wire real LLMs & tools
+# transformers
+# accelerate
+# trl
+# langchain
+# shap
+# lime

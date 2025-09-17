@@ -1,32 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+
 from typing import Callable, Iterable, List, Sequence, Tuple
 
 import numpy as np
-
-try:  # pragma: no cover - exercised via optional dependency
-    import shap  # type: ignore
-except ImportError:  # pragma: no cover - handled with deterministic fallback
-    shap = None
+import warnings
 
 
 PredictProbaFn = Callable[[np.ndarray], Sequence[Sequence[float]]]
-
-
-@dataclass(frozen=True)
-class _ExplainerBundle:
-    shap_values_fn: Callable[[np.ndarray], np.ndarray]
-    background: np.ndarray
 
 
 def make_shap_tool(
     predict_proba: PredictProbaFn,
     background_X: np.ndarray,
     *,
+    model_kind: str = "auto",
     max_background: int = 50,
 ) -> Callable[[np.ndarray, int], List[Tuple[int, float]]]:
-    """Create a SHAP-based feature-importance tool.
+    """Create a SHAP-based feature-importance tool bound to ``predict_proba``.
 
     Parameters
     ----------
@@ -35,6 +26,10 @@ def make_shap_tool(
         probabilities. Typically ``model.predict_proba``.
     background_X:
         Background data used to initialise the explainer or to compute fallbacks.
+    model_kind:
+        Optional hint describing the underlying estimator. One of
+        ``{"auto", "tree", "linear", "kernel"}``. When ``"auto"`` the wrapper will
+        attempt to infer the best SHAP explainer based on the bound estimator.
     max_background:
         Maximum number of background rows kept for explainers that do not scale
         well with dataset size.
@@ -47,8 +42,26 @@ def make_shap_tool(
     if max_background < 1:
         raise ValueError("max_background must be at least 1")
 
+    normalized_kind = (model_kind or "auto").lower()
+    if normalized_kind not in {"auto", "tree", "linear", "kernel"}:
+        raise ValueError("model_kind must be one of 'auto', 'tree', 'linear', or 'kernel'")
+
     background_subset = background[:max_background]
-    explainer = _build_explainer_bundle(predict_proba, background_subset)
+
+    try:  # pragma: no cover - optional dependency
+        import shap as shap_module  # type: ignore
+    except Exception:  # pragma: no cover - deterministic fallback exercised in tests
+        shap_module = None
+
+    model = getattr(predict_proba, "__self__", None)
+    inferred_kind = normalized_kind if normalized_kind != "auto" else _infer_model_kind(model)
+
+    shap_values_fn = _select_shap_implementation(
+        predict_proba,
+        background_subset,
+        shap_module,
+        inferred_kind,
+    )
 
     def get_feature_importance(x: np.ndarray, top_k: int = 3) -> List[Tuple[int, float]]:
         if top_k < 1:
@@ -58,7 +71,7 @@ def make_shap_tool(
         if sample.shape[1] != background.shape[1]:
             raise ValueError("x dimensionality does not match background data")
 
-        shap_values = explainer.shap_values_fn(sample)
+        shap_values = shap_values_fn(sample)
         shap_values = np.asarray(shap_values, dtype=float)
         if shap_values.ndim != 2 or shap_values.shape[0] != sample.shape[0]:
             raise ValueError("Unexpected SHAP output shape")
@@ -70,51 +83,89 @@ def make_shap_tool(
     return get_feature_importance
 
 
-def _build_explainer_bundle(
+def _select_shap_implementation(
     predict_proba: PredictProbaFn,
     background: np.ndarray,
-) -> _ExplainerBundle:
-    if shap is None:
-        return _ExplainerBundle(
-            shap_values_fn=lambda x: _approximate_shap(predict_proba, background, x),
-            background=background,
+    shap_module: object | None,
+    model_kind: str,
+) -> Callable[[np.ndarray], np.ndarray]:
+    if shap_module is None:
+        warnings.warn(
+            "SHAP is not installed; falling back to a deterministic approximation.",
+            RuntimeWarning,
+            stacklevel=2,
         )
+        return lambda x: _approximate_shap(predict_proba, background, x)
 
     model = getattr(predict_proba, "__self__", None)
-    model_kind = _infer_model_kind(model)
 
-    if model is not None and model_kind == "tree":
-        explainer = shap.TreeExplainer(model, data=background)  # type: ignore[attr-defined]
+    if model_kind == "tree" and hasattr(shap_module, "TreeExplainer"):
+        try:  # pragma: no cover - relies on optional dependency
+            explainer = shap_module.TreeExplainer(model, data=background)  # type: ignore[attr-defined]
+        except Exception as exc:  # pragma: no cover - fall back to approximation when SHAP fails
+            warnings.warn(
+                f"Tree SHAP explainer failed ({exc}); using deterministic fallback.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            def tree_values(x: np.ndarray) -> np.ndarray:
+                raw = explainer.shap_values(x)
+                return _extract_shap_values(raw, predict_proba, x)
 
-        def tree_values(x: np.ndarray) -> np.ndarray:
-            raw = explainer.shap_values(x)
-            return _extract_shap_values(raw, predict_proba, x)
+            return tree_values
 
-        return _ExplainerBundle(shap_values_fn=tree_values, background=background)
-
-    if model is not None and model_kind == "linear":
-        try:
-            explainer = shap.LinearExplainer(model, background, link="logit")  # type: ignore[attr-defined]
+    if model_kind == "linear" and hasattr(shap_module, "LinearExplainer"):
+        try:  # pragma: no cover - relies on optional dependency
+            explainer = shap_module.LinearExplainer(model, background, link="logit")  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover - older SHAP versions fall back to defaults
-            explainer = shap.LinearExplainer(model, background)  # type: ignore[attr-defined]
+            try:
+                explainer = shap_module.LinearExplainer(model, background)  # type: ignore[attr-defined]
+            except Exception as exc:  # pragma: no cover - fall back to approximation
+                warnings.warn(
+                    f"Linear SHAP explainer failed ({exc}); using deterministic fallback.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            else:
+                def linear_values(x: np.ndarray) -> np.ndarray:
+                    raw = explainer.shap_values(x)
+                    return _extract_shap_values(raw, predict_proba, x)
 
-        def linear_values(x: np.ndarray) -> np.ndarray:
-            raw = explainer.shap_values(x)
-            return _extract_shap_values(raw, predict_proba, x)
+                return linear_values
+        else:
+            def linear_values(x: np.ndarray) -> np.ndarray:
+                raw = explainer.shap_values(x)
+                return _extract_shap_values(raw, predict_proba, x)
 
-        return _ExplainerBundle(shap_values_fn=linear_values, background=background)
+            return linear_values
 
-    kernel_background = background[: min(20, background.shape[0])]
-    kernel_explainer = shap.KernelExplainer(  # type: ignore[attr-defined]
-        lambda data: _call_predict(predict_proba, data),
-        kernel_background,
+    if hasattr(shap_module, "KernelExplainer"):
+        kernel_background = background[: min(20, background.shape[0])]
+        try:  # pragma: no cover - relies on optional dependency
+            kernel_explainer = shap_module.KernelExplainer(  # type: ignore[attr-defined]
+                lambda data: _call_predict(predict_proba, data),
+                kernel_background,
+            )
+        except Exception as exc:  # pragma: no cover - fall back to deterministic computation
+            warnings.warn(
+                f"Kernel SHAP explainer failed ({exc}); using deterministic fallback.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            def kernel_values(x: np.ndarray) -> np.ndarray:
+                raw = kernel_explainer.shap_values(x)
+                return _extract_shap_values(raw, predict_proba, x)
+
+            return kernel_values
+
+    warnings.warn(
+        "Unable to build a SHAP explainer; falling back to a deterministic approximation.",
+        RuntimeWarning,
+        stacklevel=2,
     )
-
-    def kernel_values(x: np.ndarray) -> np.ndarray:
-        raw = kernel_explainer.shap_values(x)
-        return _extract_shap_values(raw, predict_proba, x)
-
-    return _ExplainerBundle(shap_values_fn=kernel_values, background=background)
+    return lambda x: _approximate_shap(predict_proba, background, x)
 
 
 def _approximate_shap(
@@ -205,6 +256,7 @@ def _ensure_2d_array(x: np.ndarray) -> np.ndarray:
     if arr.ndim != 2:
         raise ValueError("Expected a 1-D or 2-D array")
     return arr
+
 
 
 __all__ = ["make_shap_tool"]

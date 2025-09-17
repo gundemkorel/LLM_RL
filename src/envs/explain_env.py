@@ -47,7 +47,8 @@ class ExplainEnv:
         self.reveal = reveal
         self.tool_penalty = float(tool_penalty)
 
-oe816        self._next_seed = int(seed)
+        self._next_seed = int(seed)
+
 
         self.current_x = None
         self.current_p = None
@@ -76,8 +77,8 @@ oe816        self._next_seed = int(seed)
 
         self.current_x = self._sample_from_dataset()
         self.current_p = self.blackbox.predict_proba(self.current_x)
-
         return self._current_observation()
+
 
     def step(self, explanation: str, tool_call_count: int = 0) -> StepOutput:
         q = self.g.predict_proba([explanation])[0]  # [p0, p1]

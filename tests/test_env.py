@@ -77,7 +77,6 @@ def test_seeded_dataset_is_reproducible():
     env_a = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=777)
     env_b = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=777)
 
-
     seq_a = [env_a.reset()["x"] for _ in range(5)]
     seq_b = [env_b.reset()["x"] for _ in range(5)]
 

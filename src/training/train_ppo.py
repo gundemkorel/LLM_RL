@@ -71,7 +71,6 @@ def format_prompt(x: np.ndarray, p: np.ndarray) -> str:
     )
 
 
-
 def _build_default_dataset(
     seed: int,
     n_features: int = 10,

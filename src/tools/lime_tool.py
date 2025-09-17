@@ -3,11 +3,7 @@ from __future__ import annotations
 from typing import Callable, Dict, Sequence
 
 import numpy as np
-
-try:  # pragma: no cover - exercised via optional dependency
-    from lime.lime_tabular import LimeTabularExplainer  # type: ignore
-except ImportError:  # pragma: no cover - deterministic fallback exercised in tests
-    LimeTabularExplainer = None
+import warnings
 
 PredictProbaFn = Callable[[np.ndarray], Sequence[Sequence[float]]]
 
@@ -41,7 +37,20 @@ def make_lime_tool(
         Optional integer seed ensuring deterministic behaviour.
     """
 
+    try:  # pragma: no cover - optional dependency
+        from lime.lime_tabular import LimeTabularExplainer  # type: ignore
+    except Exception:  # pragma: no cover - exercised in environments without lime
+        LimeTabularExplainer = None
+
     background = _ensure_2d_array(training_data) if training_data is not None else None
+    lime_available = LimeTabularExplainer is not None and background is not None
+    if not lime_available:
+        message = (
+            "LIME is not installed; using a deterministic surrogate." if LimeTabularExplainer is None
+            else "LIME background data missing; using a deterministic surrogate."
+        )
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+
     base_seed = int(random_state) if random_state is not None else 0
 
     def get_local_explanation(x: np.ndarray) -> Dict[str, float | Sequence[float] | int | str]:
@@ -50,7 +59,7 @@ def make_lime_tool(
         target_class = int(np.argmax(probs[0]))
         seed = (base_seed + _hash_array(sample)) % (2**32)
 
-        if background is not None and LimeTabularExplainer is not None:
+        if lime_available:
             explainer = LimeTabularExplainer(
                 training_data=background,
                 feature_names=list(feature_names) if feature_names is not None else None,
@@ -70,8 +79,7 @@ def make_lime_tool(
             for idx, weight in explanation.local_exp.get(target_class, []):
                 coefficients[int(idx)] = float(weight)
             intercept = float(explanation.intercept[target_class])
-            r2 = float(explanation.score)
-            r2 = float(np.clip(r2, 0.0, 1.0))
+            r2 = float(np.clip(float(explanation.score), 0.0, 1.0))
         else:
             intercept, coefficients, r2 = _lime_via_local_linear(
                 predict_proba,
@@ -168,6 +176,7 @@ def _hash_array(arr: np.ndarray) -> int:
     weights = np.arange(1, scaled.size + 1, dtype=np.int64)
     hashed = int(np.abs(np.dot(scaled, weights)) % (2**32))
     return hashed
+
 
 
 __all__ = ["make_lime_tool"]

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from sklearn.datasets import make_classification
-from sklearn.linear_model import LogisticRegression
+
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import RandomForestClassifier
+
 
 import sys
 from pathlib import Path
@@ -18,29 +20,29 @@ from src.tools.shap_tool import make_shap_tool
 
 
 @pytest.fixture(scope="module")
-def logistic_setup():
-    X, y = make_classification(
-        n_samples=200,
-        n_features=4,
-        n_informative=3,
-        n_redundant=0,
-        random_state=42,
-    )
-    model = LogisticRegression(max_iter=1000, solver="lbfgs").fit(X, y)
+
+def breast_cancer_setup():
+    data = load_breast_cancer()
+    X = data.data.astype(float)
+    y = data.target.astype(int)
+    model = RandomForestClassifier(n_estimators=32, random_state=0).fit(X, y)
+    background = X[:128]
     feature_grid = {
-        i: np.linspace(X[:, i].min(), X[:, i].max(), num=6, dtype=float)
+        i: np.linspace(X[:, i].min(), X[:, i].max(), num=8, dtype=float)
         for i in range(X.shape[1])
     }
-    return X, model, feature_grid
+    feature_names = list(data.feature_names)
+    return X, model, background, feature_grid, feature_names
 
 
-def test_shap_tool_returns_top_k(logistic_setup):
-    X, model, _ = logistic_setup
-    tool = make_shap_tool(model.predict_proba, X[:50])
+def test_shap_tool_returns_top_k(breast_cancer_setup):
+    X, model, background, _, _ = breast_cancer_setup
+    tool = make_shap_tool(model.predict_proba, background, model_kind="tree")
     x = X[0]
-    result = tool(x, top_k=3)
+    result = tool(x, top_k=5)
     assert isinstance(result, list)
-    assert len(result) == 3
+    assert len(result) == 5
+
     magnitudes = []
     for idx, value in result:
         assert isinstance(idx, int)
@@ -50,13 +52,14 @@ def test_shap_tool_returns_top_k(logistic_setup):
     assert magnitudes == sorted(magnitudes, reverse=True)
 
 
-def test_lime_tool_produces_coefficients(logistic_setup):
-    X, model, _ = logistic_setup
-    feature_names = [f"f{i}" for i in range(X.shape[1])]
+
+def test_lime_tool_produces_coefficients(breast_cancer_setup):
+    X, model, background, _, feature_names = breast_cancer_setup
     tool = make_lime_tool(
         model.predict_proba,
         feature_names,
-        training_data=X[:100],
+        training_data=background,
+
         n_samples=256,
         random_state=123,
     )
@@ -70,13 +73,15 @@ def test_lime_tool_produces_coefficients(logistic_setup):
     assert isinstance(explanation["target_class"], int)
 
 
-def test_pdp_tool_returns_curve(logistic_setup):
-    X, model, feature_grid = logistic_setup
-    tool = make_pdp_tool(model.predict_proba, feature_grid, background=X[:40])
-    feature_idx = 1
-    pdp = tool(X[2], feature_idx)
+
+def test_pdp_tool_returns_curve(breast_cancer_setup):
+    X, model, background, feature_grid, _ = breast_cancer_setup
+    tool = make_pdp_tool(model.predict_proba, feature_grid, background=background)
+    feature_idx = 3
+    pdp = tool(X[2], feature_idx, grid_points=7)
     grid = np.asarray(pdp["grid"], dtype=float)
-    assert grid.shape[0] == feature_grid[feature_idx].shape[0]
+    assert grid.shape[0] == 7
+
     curve = np.asarray(pdp["pdp"], dtype=float)
     ice = np.asarray(pdp["ice"], dtype=float)
     assert curve.shape == grid.shape

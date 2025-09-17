@@ -36,7 +36,9 @@ class ExplainEnv:
     ):
         if reveal not in {"probs", "label"}:
             raise ValueError(f"Unsupported reveal mode: {reveal}")
+
         dataset_size = int(dataset_size)
+
         if dataset_size <= 0:
             raise ValueError("dataset_size must be positive")
 
@@ -60,8 +62,10 @@ class ExplainEnv:
 
         self.reveal = reveal
         self.tool_penalty = float(tool_penalty)
+
         self.dataset_size = dataset_size
         self.dataset_x = np.array(dataset.X, copy=True)
+       
 
         self.current_x = None
         self.current_p = None

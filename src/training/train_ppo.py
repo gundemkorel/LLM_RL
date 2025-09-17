@@ -9,7 +9,13 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
 
+from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
+
+from src.data.datasets import TabularDataset
 from src.envs.explain_env import ExplainEnv
+from src.models.blackbox import BlackBoxModel
+
 
 try:  # Optional torch / transformers / trl stack
     import torch
@@ -63,6 +69,28 @@ def format_prompt(x: np.ndarray, p: np.ndarray) -> str:
         f"p = [{p_str}]\n"
         "Explanation:"
     )
+
+
+
+def _build_default_dataset(
+    seed: int,
+    n_features: int = 10,
+    dataset_size: int = 128,
+) -> tuple[TabularDataset, BlackBoxModel]:
+    X, y = make_classification(
+        n_samples=dataset_size,
+        n_features=n_features,
+        n_informative=min(6, n_features),
+        n_redundant=min(2, max(n_features - 6, 0)),
+        n_classes=2,
+        random_state=seed,
+    )
+    dataset = TabularDataset.from_arrays(X, y, feature_names=None)
+    blackbox = BlackBoxModel.from_training(
+        dataset=dataset,
+        estimator_factory=lambda: LogisticRegression(max_iter=1000, random_state=seed),
+    )
+    return dataset, blackbox
 
 
 def _to_float(value: object, default: float = float("nan")) -> float:
@@ -390,7 +418,10 @@ def train(cfg: PPOTrainingConfig) -> List[Dict[str, float]]:
     trainer, tokenizer, device = initialize_trainer(cfg)
     use_torch = torch is not None and not isinstance(trainer, DummyPPOTrainer)
 
-    env = ExplainEnv(seed=cfg.seed)
+
+    dataset, blackbox = _build_default_dataset(seed=cfg.seed)
+    env = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=cfg.seed)
+
     stats_history: List[Dict[str, float]] = []
 
     buffer_queries = []

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
 from sklearn.datasets import load_breast_cancer
 from sklearn.ensemble import RandomForestClassifier
+
 
 import sys
 from pathlib import Path
@@ -18,6 +20,7 @@ from src.tools.shap_tool import make_shap_tool
 
 
 @pytest.fixture(scope="module")
+
 def breast_cancer_setup():
     data = load_breast_cancer()
     X = data.data.astype(float)
@@ -39,6 +42,7 @@ def test_shap_tool_returns_top_k(breast_cancer_setup):
     result = tool(x, top_k=5)
     assert isinstance(result, list)
     assert len(result) == 5
+
     magnitudes = []
     for idx, value in result:
         assert isinstance(idx, int)
@@ -48,12 +52,14 @@ def test_shap_tool_returns_top_k(breast_cancer_setup):
     assert magnitudes == sorted(magnitudes, reverse=True)
 
 
+
 def test_lime_tool_produces_coefficients(breast_cancer_setup):
     X, model, background, _, feature_names = breast_cancer_setup
     tool = make_lime_tool(
         model.predict_proba,
         feature_names,
         training_data=background,
+
         n_samples=256,
         random_state=123,
     )
@@ -67,6 +73,7 @@ def test_lime_tool_produces_coefficients(breast_cancer_setup):
     assert isinstance(explanation["target_class"], int)
 
 
+
 def test_pdp_tool_returns_curve(breast_cancer_setup):
     X, model, background, feature_grid, _ = breast_cancer_setup
     tool = make_pdp_tool(model.predict_proba, feature_grid, background=background)
@@ -74,6 +81,7 @@ def test_pdp_tool_returns_curve(breast_cancer_setup):
     pdp = tool(X[2], feature_idx, grid_points=7)
     grid = np.asarray(pdp["grid"], dtype=float)
     assert grid.shape[0] == 7
+
     curve = np.asarray(pdp["pdp"], dtype=float)
     ice = np.asarray(pdp["ice"], dtype=float)
     assert curve.shape == grid.shape

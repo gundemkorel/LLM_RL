@@ -32,7 +32,9 @@ class _AgentState:
     local_explanation: Any = None
     partial_dependence: Any = None
     top_feature_index: Optional[int] = None
+
     feature_names: Optional[Sequence[str]] = None
+
 
 
 class ToolUsingPolicy:
@@ -70,6 +72,7 @@ class ToolUsingPolicy:
         self._llm = llm
         self._max_tool_calls = max_tool_calls
 
+
     def generate_explanation(
         self,
         x: np.ndarray,
@@ -83,6 +86,7 @@ class ToolUsingPolicy:
         state = _AgentState()
         if feature_names is not None:
             state.feature_names = tuple(str(name) for name in feature_names)
+
         scratchpad: List[str] = []
         calls_used = 0
         x_list = _ensure_list(x)
@@ -126,10 +130,12 @@ class ToolUsingPolicy:
             )
             state.partial_dependence = pd_result
 
+
         summary = self._build_summary(p_list, state)
         if include_tool_count:
             return summary, calls_used
         return summary
+
 
     def _render_prompt(
         self,
@@ -154,6 +160,7 @@ class ToolUsingPolicy:
             "Scratchpad so far:\n"
             f"{scratchpad_text}\n"
             "Reply with JSON only."
+
         )
 
     def _parse_step(self, content: Any) -> Dict[str, Any]:
@@ -280,6 +287,7 @@ class ToolUsingPolicy:
             f"{self._feature_label(int(idx), feature_names)}:{float(val):+0.2f}"
             for idx, val in values[:3]
         )
+
         return f"Top SHAP attributions -> {highlights}"
 
     def _summarize_local_explanation(self, result: Any) -> str:
@@ -292,6 +300,7 @@ class ToolUsingPolicy:
         feature_names: Optional[Sequence[str]],
     ) -> str:
         detail = self._format_partial_dependence(result, feature_idx, feature_names)
+
         return f"Partial dependence insight: {detail}" if detail else "Partial dependence insight: (none)"
 
     def _normalize_feature_importance(
@@ -341,6 +350,7 @@ class ToolUsingPolicy:
         feature_idx: int,
         feature_names: Optional[Sequence[str]],
     ) -> str:
+
         if result is None:
             return ""
         detail: str
@@ -378,6 +388,7 @@ class ToolUsingPolicy:
         if bracketed:
             return f"{prefix}[{index}]"
         return f"{prefix}{index}"
+
 
     def _pick_metric(self, data: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         for key in ("score", "r2", "r_squared", "fidelity", "accuracy"):

@@ -1,8 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import numpy as np
-from typing import Dict, Any
+from typing import Any, Dict
 
+import numpy as np
+from sklearn.datasets import make_classification
+from sklearn.linear_model import LogisticRegression
+
+from src.data.datasets import TabularDataset
 from src.models.blackbox import BlackBoxModel
 from src.models.g_explainer import ExplanationInducedModel
 from src.utils.reward import neg_kl_reward
@@ -32,19 +36,36 @@ class ExplainEnv:
     ):
         if reveal not in {"probs", "label"}:
             raise ValueError(f"Unsupported reveal mode: {reveal}")
+
+        dataset_size = int(dataset_size)
+
         if dataset_size <= 0:
             raise ValueError("dataset_size must be positive")
 
         self.rng = np.random.default_rng(seed)
-        self.f = BlackBoxModel(n_features=n_features, random_state=seed)
+
+        X, y = make_classification(
+            n_samples=dataset_size,
+            n_features=n_features,
+            n_informative=min(6, n_features),
+            n_redundant=min(2, max(n_features - 6, 0)),
+            n_classes=2,
+            random_state=seed,
+        )
+        dataset = TabularDataset.from_arrays(X, y, feature_names=None)
+        self.f = BlackBoxModel.from_training(
+            dataset=dataset,
+            estimator_factory=lambda: LogisticRegression(max_iter=1000, random_state=seed),
+        )
         self.g = ExplanationInducedModel()
         self.g.fit_dummy()
 
         self.reveal = reveal
         self.tool_penalty = float(tool_penalty)
-        self.dataset_size = int(dataset_size)
 
-        self.dataset_x = self.rng.normal(0, 1, size=(self.dataset_size, self.f.n_features))
+        self.dataset_size = dataset_size
+        self.dataset_x = np.array(dataset.X, copy=True)
+       
 
         self.current_x = None
         self.current_p = None

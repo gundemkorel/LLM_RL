@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 import numpy as np
 
+
 from src.data.datasets import TabularDataset
 from src.models.blackbox import BlackBoxModel
 from src.models.g_explainer import ExplanationInducedModel
@@ -25,6 +26,7 @@ class ExplainEnv:
 
     def __init__(
         self,
+
         *,
         dataset: TabularDataset,
         blackbox: BlackBoxModel,
@@ -35,18 +37,22 @@ class ExplainEnv:
         if reveal not in {"probs", "label"}:
             raise ValueError(f"Unsupported reveal mode: {reveal}")
 
+
         self.dataset = dataset
         self.blackbox = blackbox
+
         self.g = ExplanationInducedModel()
         self.g.fit_dummy()
 
         self.reveal = reveal
         self.tool_penalty = float(tool_penalty)
-        self._next_seed = int(seed)
+
+oe816        self._next_seed = int(seed)
 
         self.current_x = None
         self.current_p = None
         self.t = 0
+
 
     def _sample_from_dataset(self) -> np.ndarray:
         sample_seed = self._next_seed
@@ -55,6 +61,7 @@ class ExplainEnv:
         if batch.shape[0] != 1:
             raise ValueError("Dataset sampling must return a single row for n=1")
         return np.array(batch[0], copy=True)
+
 
     def _current_observation(self) -> Dict[str, Any]:
         obs: Dict[str, Any] = {"x": self.current_x}
@@ -66,8 +73,10 @@ class ExplainEnv:
 
     def reset(self) -> Dict[str, Any]:
         self.t = 0
+
         self.current_x = self._sample_from_dataset()
         self.current_p = self.blackbox.predict_proba(self.current_x)
+
         return self._current_observation()
 
     def step(self, explanation: str, tool_call_count: int = 0) -> StepOutput:

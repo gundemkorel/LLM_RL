@@ -33,6 +33,9 @@ class _AgentState:
     partial_dependence: Any = None
     top_feature_index: Optional[int] = None
 
+    feature_names: Optional[Sequence[str]] = None
+
+
 
 class ToolUsingPolicy:
     """LangChain-powered policy that orchestrates explanation tools via ReAct."""
@@ -69,10 +72,21 @@ class ToolUsingPolicy:
         self._llm = llm
         self._max_tool_calls = max_tool_calls
 
-    def generate_explanation(self, x: np.ndarray, p: np.ndarray) -> str:
+
+    def generate_explanation(
+        self,
+        x: np.ndarray,
+        p: np.ndarray,
+        feature_names: Optional[Sequence[str]] = None,
+        *,
+        include_tool_count: bool = False,
+    ) -> str | Tuple[str, int]:
         """Run a ReAct-style loop to obtain a cited explanation for ``x``."""
 
         state = _AgentState()
+        if feature_names is not None:
+            state.feature_names = tuple(str(name) for name in feature_names)
+
         scratchpad: List[str] = []
         calls_used = 0
         x_list = _ensure_list(x)
@@ -116,7 +130,12 @@ class ToolUsingPolicy:
             )
             state.partial_dependence = pd_result
 
-        return self._build_summary(p_list, state)
+
+        summary = self._build_summary(p_list, state)
+        if include_tool_count:
+            return summary, calls_used
+        return summary
+
 
     def _render_prompt(
         self,
@@ -141,6 +160,7 @@ class ToolUsingPolicy:
             "Scratchpad so far:\n"
             f"{scratchpad_text}\n"
             "Reply with JSON only."
+
         )
 
     def _parse_step(self, content: Any) -> Dict[str, Any]:
@@ -184,7 +204,9 @@ class ToolUsingPolicy:
             if not state.feature_importance:
                 raise ValueError("Feature importance tool returned no attributions")
             state.top_feature_index = int(state.feature_importance[0][0])
-            return self._summarize_feature_importance(state.feature_importance)
+            return self._summarize_feature_importance(
+                state.feature_importance, state.feature_names
+            )
 
         if tool_name == "get_local_explanation":
             state.local_explanation = result
@@ -195,7 +217,9 @@ class ToolUsingPolicy:
             raise RuntimeError("Partial dependence requested before feature importance was available")
 
         state.partial_dependence = result
-        return self._summarize_partial_dependence(result, state.top_feature_index)
+        return self._summarize_partial_dependence(
+            result, state.top_feature_index, state.feature_names
+        )
 
     def _prepare_tool_args(
         self,
@@ -234,10 +258,13 @@ class ToolUsingPolicy:
             raise RuntimeError("Missing feature importance values for summary")
 
         top_idx, top_value = shap_values[0]
-        shap_text = f"SHAP: f[{int(top_idx)}]={float(top_value):+0.2f}"
+        shap_label = self._feature_label(int(top_idx), state.feature_names, bracketed=True)
+        shap_text = f"SHAP: {shap_label}={float(top_value):+0.2f}"
 
         local_text = self._format_local_explanation(state.local_explanation)
-        pdp_text = self._format_partial_dependence(state.partial_dependence, int(top_idx))
+        pdp_text = self._format_partial_dependence(
+            state.partial_dependence, int(top_idx), state.feature_names
+        )
 
         citations = [shap_text]
         if local_text:
@@ -253,17 +280,27 @@ class ToolUsingPolicy:
 
         return explanation
 
-    def _summarize_feature_importance(self, values: List[Tuple[int, float]]) -> str:
+    def _summarize_feature_importance(
+        self, values: List[Tuple[int, float]], feature_names: Optional[Sequence[str]]
+    ) -> str:
         highlights = ", ".join(
-            f"f{int(idx)}:{float(val):+0.2f}" for idx, val in values[:3]
+            f"{self._feature_label(int(idx), feature_names)}:{float(val):+0.2f}"
+            for idx, val in values[:3]
         )
+
         return f"Top SHAP attributions -> {highlights}"
 
     def _summarize_local_explanation(self, result: Any) -> str:
         return f"Local explanation: {self._format_local_explanation(result)}"
 
-    def _summarize_partial_dependence(self, result: Any, feature_idx: int) -> str:
-        detail = self._format_partial_dependence(result, feature_idx)
+    def _summarize_partial_dependence(
+        self,
+        result: Any,
+        feature_idx: int,
+        feature_names: Optional[Sequence[str]],
+    ) -> str:
+        detail = self._format_partial_dependence(result, feature_idx, feature_names)
+
         return f"Partial dependence insight: {detail}" if detail else "Partial dependence insight: (none)"
 
     def _normalize_feature_importance(
@@ -307,7 +344,13 @@ class ToolUsingPolicy:
             return self._shorten(", ".join(map(str, result)))
         return self._shorten(str(result))
 
-    def _format_partial_dependence(self, result: Any, feature_idx: int) -> str:
+    def _format_partial_dependence(
+        self,
+        result: Any,
+        feature_idx: int,
+        feature_names: Optional[Sequence[str]],
+    ) -> str:
+
         if result is None:
             return ""
         detail: str
@@ -327,7 +370,25 @@ class ToolUsingPolicy:
         else:
             detail = self._shorten(str(result))
 
-        return f"PDP@f{int(feature_idx)} {detail}"
+        label = self._feature_label(int(feature_idx), feature_names)
+        return f"PDP@{label} {detail}"
+
+    def _feature_label(
+        self,
+        index: int,
+        feature_names: Optional[Sequence[str]],
+        *,
+        bracketed: bool = False,
+        prefix: str = "f",
+    ) -> str:
+        if feature_names is not None and 0 <= index < len(feature_names):
+            name = feature_names[index]
+            if name:
+                return str(name)
+        if bracketed:
+            return f"{prefix}[{index}]"
+        return f"{prefix}{index}"
+
 
     def _pick_metric(self, data: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
         for key in ("score", "r2", "r_squared", "fidelity", "accuracy"):

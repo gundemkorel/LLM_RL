@@ -129,14 +129,37 @@ def test_policy_generates_cited_summary(monkeypatch):
 
     x = np.array([0.1, -0.4, 1.2])
     p = np.array([0.2, 0.8])
-    explanation = policy.generate_explanation(x, p)
+
+
+    feature_names = ["feat0", "feat1", "mean radius"]
+    explanation, tool_count = policy.generate_explanation(
+        x, p, feature_names=feature_names, include_tool_count=True
+    )
+
+    assert tool_count == 3
 
     assert shap_calls == [x.tolist()]
     assert local_calls == [x.tolist()]
     assert pdp_calls == [(x.tolist(), 2)]  # top feature is index 2 from SHAP values
 
-    assert "SHAP: f[2]" in explanation
+
+    assert "SHAP: mean radius" in explanation
     assert "LIME fidelity=0.72" in explanation
-    assert "PDP@f2 monotone↑" in explanation
+    assert "PDP@mean radius monotone↑" in explanation
     assert len(explanation.split()) <= 150
+
+    # Backward-compatible path: omit tool counts and feature names
+    shap_calls.clear()
+    local_calls.clear()
+    pdp_calls.clear()
+
+    llm2 = DummyLLM(scripted)
+    policy2 = module.ToolUsingPolicy(tools=tools, llm=llm2, max_tool_calls=3)
+    explanation_only = policy2.generate_explanation(x, p)
+
+    assert isinstance(explanation_only, str)
+    assert "SHAP: f[2]" in explanation_only
+    assert shap_calls == [x.tolist()]
+    assert local_calls == [x.tolist()]
+    assert pdp_calls == [(x.tolist(), 2)]
 

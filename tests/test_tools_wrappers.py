@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.ensemble import RandomForestClassifier
+
+
 import sys
 from pathlib import Path
 

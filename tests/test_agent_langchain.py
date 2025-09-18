@@ -130,19 +130,15 @@ def test_policy_generates_cited_summary(monkeypatch):
     x = np.array([0.1, -0.4, 1.2])
     p = np.array([0.2, 0.8])
 
-
     feature_names = ["feat0", "feat1", "mean radius"]
     explanation, tool_count = policy.generate_explanation(
         x, p, feature_names=feature_names, include_tool_count=True
     )
 
     assert tool_count == 3
-
     assert shap_calls == [x.tolist()]
     assert local_calls == [x.tolist()]
     assert pdp_calls == [(x.tolist(), 2)]  # top feature is index 2 from SHAP values
-
-
     assert "SHAP: mean radius" in explanation
     assert "LIME fidelity=0.72" in explanation
     assert "PDP@mean radius monotone↑" in explanation

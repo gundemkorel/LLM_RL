@@ -8,14 +8,12 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Sequence, Tuple
 
 import numpy as np
-
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 
 from src.data.datasets import TabularDataset
 from src.envs.explain_env import ExplainEnv
 from src.models.blackbox import BlackBoxModel
-
 
 try:  # Optional torch / transformers / trl stack
     import torch
@@ -416,7 +414,6 @@ def train(cfg: PPOTrainingConfig) -> List[Dict[str, float]]:
 
     trainer, tokenizer, device = initialize_trainer(cfg)
     use_torch = torch is not None and not isinstance(trainer, DummyPPOTrainer)
-
 
     dataset, blackbox = _build_default_dataset(seed=cfg.seed)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=cfg.seed)

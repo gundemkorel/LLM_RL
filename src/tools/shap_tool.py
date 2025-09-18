@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from typing import Callable, Iterable, List, Sequence, Tuple
 
 import numpy as np
@@ -256,7 +255,6 @@ def _ensure_2d_array(x: np.ndarray) -> np.ndarray:
     if arr.ndim != 2:
         raise ValueError("Expected a 1-D or 2-D array")
     return arr
-
 
 
 __all__ = ["make_shap_tool"]

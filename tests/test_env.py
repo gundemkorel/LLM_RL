@@ -1,11 +1,9 @@
 import numpy as np
 import pytest
-
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
 
 from src.data.datasets import TabularDataset
-
 from src.envs.explain_env import ExplainEnv
 from src.models.blackbox import BlackBoxModel
 
@@ -33,12 +31,10 @@ def _make_dataset_and_model(
 
 
 def test_env_step_runs_with_prob_reveal():
-
     dataset, blackbox = _make_dataset_and_model(seed=42)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, reveal="probs", seed=42)
     obs = env.reset()
     assert "p" in obs and obs["x"].shape == (dataset.n_features,)
-
     e = "features suggest class 1 with strong signal"
     out = env.step(e, tool_call_count=2)
     assert hasattr(out, "reward")
@@ -49,7 +45,6 @@ def test_env_step_runs_with_prob_reveal():
 
 
 def test_env_label_reveal_hides_probabilities():
-
     dataset, blackbox = _make_dataset_and_model(seed=123)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, reveal="label", seed=123)
 
@@ -61,10 +56,8 @@ def test_env_label_reveal_hides_probabilities():
 
 
 def test_tool_penalty_is_applied_to_reward():
-
     dataset, blackbox = _make_dataset_and_model(seed=2023)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, tool_penalty=0.25, seed=2023)
-
     env.reset()
     result = env.step("penalty test", tool_call_count=3)
     expected = result.info["base_reward"] - 0.75
@@ -72,7 +65,6 @@ def test_tool_penalty_is_applied_to_reward():
 
 
 def test_seeded_dataset_is_reproducible():
-
     dataset, blackbox = _make_dataset_and_model(seed=777, dataset_size=32)
     env_a = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=777)
     env_b = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=777)

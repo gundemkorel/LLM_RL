@@ -139,7 +139,6 @@ def test_policy_generates_cited_summary(monkeypatch):
     assert shap_calls == [x.tolist()]
     assert local_calls == [x.tolist()]
     assert pdp_calls == [(x.tolist(), 2)]  # top feature is index 2 from SHAP values
-
     assert "SHAP: mean radius" in explanation
     assert "LIME fidelity=0.72" in explanation
     assert "PDP@mean radius monotone↑" in explanation

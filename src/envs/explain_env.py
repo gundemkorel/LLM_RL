@@ -37,6 +37,7 @@ class ExplainEnv:
 
         self.dataset = dataset
         self.blackbox = blackbox
+
         self.g = ExplanationInducedModel()
         self.g.fit_dummy()
 
@@ -69,6 +70,7 @@ class ExplainEnv:
         self.current_x = self._sample_from_dataset()
         self.current_p = self.blackbox.predict_proba(self.current_x)
         return self._current_observation()
+
 
     def step(self, explanation: str, tool_call_count: int = 0) -> StepOutput:
         q = self.g.predict_proba([explanation])[0]  # [p0, p1]

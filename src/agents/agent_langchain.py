@@ -34,7 +34,6 @@ class _AgentState:
     top_feature_index: Optional[int] = None
     feature_names: Optional[Sequence[str]] = None
 
-
 class ToolUsingPolicy:
     """LangChain-powered policy that orchestrates explanation tools via ReAct."""
 
@@ -154,6 +153,7 @@ class ToolUsingPolicy:
             "Scratchpad so far:\n"
             f"{scratchpad_text}\n"
             "Reply with JSON only."
+
         )
 
     def _parse_step(self, content: Any) -> Dict[str, Any]:
@@ -280,6 +280,7 @@ class ToolUsingPolicy:
             f"{self._feature_label(int(idx), feature_names)}:{float(val):+0.2f}"
             for idx, val in values[:3]
         )
+
         return f"Top SHAP attributions -> {highlights}"
 
     def _summarize_local_explanation(self, result: Any) -> str:

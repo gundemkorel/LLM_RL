@@ -417,6 +417,7 @@ def train(cfg: PPOTrainingConfig) -> List[Dict[str, float]]:
 
     dataset, blackbox = _build_default_dataset(seed=cfg.seed)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, seed=cfg.seed)
+
     stats_history: List[Dict[str, float]] = []
 
     buffer_queries = []

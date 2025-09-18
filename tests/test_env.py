@@ -47,6 +47,7 @@ def test_env_step_runs_with_prob_reveal():
 def test_env_label_reveal_hides_probabilities():
     dataset, blackbox = _make_dataset_and_model(seed=123)
     env = ExplainEnv(dataset=dataset, blackbox=blackbox, reveal="label", seed=123)
+
     obs = env.reset()
     assert "y" in obs and "p" not in obs
     out = env.step("short explanation", tool_call_count=1)
